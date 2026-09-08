@@ -143,6 +143,10 @@ button.small {
   gap: 10px;
 }
 
+.button-row.single-mobile {
+  grid-template-columns: 1fr 1fr;
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;
@@ -251,5 +255,10 @@ hr {
 
   #graph {
     min-height: 520px;
+  }
+
+  .button-row,
+  .button-row.single-mobile {
+    grid-template-columns: 1fr;
   }
 }

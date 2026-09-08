@@ -68,6 +68,26 @@
         </section>
 
         <section class="panel">
+          <h2>Markdown 导入</h2>
+          <p class="hint">
+            按下面格式粘贴课程笔记，可以自动生成课程、知识点和它们之间的关系。
+          </p>
+          <textarea id="markdownInput" rows="12" placeholder="# 课程：社会心理学
+
+## 知识点：归因偏差
+说明：解释他人行为时常见的系统性偏差。
+关联：图式 | 受影响于
+关联：基本归因错误 | 包含
+
+## 知识点：从众
+说明：个体因群体压力而改变行为或判断。"></textarea>
+          <div class="button-row single-mobile">
+            <button id="importMarkdownBtn">导入 Markdown</button>
+            <button id="appendMarkdownBtn" class="ghost">追加导入</button>
+          </div>
+        </section>
+
+        <section class="panel">
           <div class="section-header">
             <h2>数据 JSON</h2>
             <button id="copyJsonBtn" class="ghost small">复制</button>

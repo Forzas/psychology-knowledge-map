@@ -30,6 +30,9 @@ const els = {
   relationTarget: document.getElementById('relationTarget'),
   relationLabel: document.getElementById('relationLabel'),
   addRelationBtn: document.getElementById('addRelationBtn'),
+  markdownInput: document.getElementById('markdownInput'),
+  importMarkdownBtn: document.getElementById('importMarkdownBtn'),
+  appendMarkdownBtn: document.getElementById('appendMarkdownBtn'),
   dataEditor: document.getElementById('dataEditor'),
   applyJsonBtn: document.getElementById('applyJsonBtn'),
   copyJsonBtn: document.getElementById('copyJsonBtn'),
@@ -57,6 +60,73 @@ function saveData() {
 function validateData(data) {
   if (!data || !Array.isArray(data.courses) || !Array.isArray(data.concepts) || !Array.isArray(data.relations)) {
     throw new Error('数据结构无效，必须包含 courses / concepts / relations 三个数组。');
+  }
+}
+
+function getCourseByName(name) {
+  return state.data.courses.find((course) => course.name === name);
+}
+
+function getConceptByName(name) {
+  return state.data.concepts.find((concept) => concept.name === name);
+}
+
+function ensureCourse(name, description = '') {
+  const trimmedName = name.trim();
+  if (!trimmedName) return null;
+
+  let course = getCourseByName(trimmedName);
+  if (!course) {
+    course = {
+      id: `course-${slugify(trimmedName)}`,
+      name: trimmedName,
+      description: description.trim()
+    };
+    state.data.courses.push(course);
+  } else if (description.trim() && !course.description) {
+    course.description = description.trim();
+  }
+
+  return course;
+}
+
+function ensureConcept(name, description = '', courseIds = []) {
+  const trimmedName = name.trim();
+  if (!trimmedName) return null;
+
+  let concept = getConceptByName(trimmedName);
+  if (!concept) {
+    concept = {
+      id: `concept-${slugify(trimmedName)}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: trimmedName,
+      courseIds: [...new Set(courseIds)],
+      description: description.trim()
+    };
+    state.data.concepts.push(concept);
+  } else {
+    concept.courseIds = [...new Set([...(concept.courseIds || []), ...courseIds])];
+    if (description.trim() && !concept.description) {
+      concept.description = description.trim();
+    }
+  }
+
+  return concept;
+}
+
+function ensureRelation(sourceId, targetId, label = '关联') {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+
+  const exists = state.data.relations.some(
+    (relation) => relation.source === sourceId && relation.target === targetId && relation.label === label
+  );
+
+  if (!exists) {
+    state.data.relations.push({
+      id: `rel-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      source: sourceId,
+      target: targetId,
+      label
+    });
   }
 }
 
@@ -132,6 +202,20 @@ function buildElements() {
   return [...courseNodes, ...conceptNodes, ...courseEdges, ...conceptEdges];
 }
 
+function runLayout() {
+  state.cy.layout({
+    name: 'cose-bilkent',
+    animate: 'end',
+    animationDuration: 450,
+    nodeRepulsion: 7800,
+    idealEdgeLength: 140,
+    edgeElasticity: 0.2,
+    gravity: 0.1,
+    fit: true,
+    padding: 40
+  }).run();
+}
+
 function renderGraph() {
   const elements = buildElements();
 
@@ -204,18 +288,7 @@ function renderGraph() {
             'border-color': '#7048eb'
           }
         }
-      ],
-      layout: {
-        name: 'cose-bilkent',
-        animate: 'end',
-        animationDuration: 450,
-        nodeRepulsion: 7800,
-        idealEdgeLength: 140,
-        edgeElasticity: 0.2,
-        gravity: 0.1,
-        fit: true,
-        padding: 40
-      }
+      ]
     });
 
     state.cy.on('tap', 'node', (event) => {
@@ -226,18 +299,9 @@ function renderGraph() {
   } else {
     state.cy.elements().remove();
     state.cy.add(elements);
-    state.cy.layout({
-      name: 'cose-bilkent',
-      animate: 'end',
-      animationDuration: 450,
-      nodeRepulsion: 7800,
-      idealEdgeLength: 140,
-      edgeElasticity: 0.2,
-      gravity: 0.1,
-      fit: true,
-      padding: 40
-    }).run();
   }
+
+  runLayout();
 
   if (state.selectedNodeId && state.cy.getElementById(state.selectedNodeId).length) {
     state.cy.getElementById(state.selectedNodeId).select();
@@ -326,12 +390,7 @@ function addCourse() {
   const name = els.courseName.value.trim();
   if (!name) return alert('先写一个课程名呀。');
 
-  state.data.courses.push({
-    id: `course-${slugify(name)}`,
-    name,
-    description: ''
-  });
-
+  ensureCourse(name);
   els.courseName.value = '';
   syncAndRender();
 }
@@ -342,13 +401,7 @@ function addConcept() {
   const description = els.conceptDescription.value.trim();
   if (!name || !courseId) return alert('知识点名称和所属课程都要有哦。');
 
-  state.data.concepts.push({
-    id: `concept-${slugify(name)}-${Date.now()}`,
-    name,
-    courseIds: [courseId],
-    description
-  });
-
+  ensureConcept(name, description, [courseId]);
   els.conceptName.value = '';
   els.conceptDescription.value = '';
   syncAndRender();
@@ -362,13 +415,7 @@ function addRelation() {
   if (!source || !target) return alert('先选择两个知识点。');
   if (source === target) return alert('自己连自己会有点晕，换两个点试试。');
 
-  state.data.relations.push({
-    id: `rel-${Date.now()}`,
-    source,
-    target,
-    label
-  });
-
+  ensureRelation(source, target, label);
   els.relationLabel.value = '';
   syncAndRender();
 }
@@ -397,17 +444,176 @@ function copyJson() {
 function resetData() {
   state.data = deepClone(window.DEFAULT_DATA);
   state.selectedNodeId = null;
+  els.markdownInput.value = '';
   syncAndRender();
+}
+
+function parseMarkdownToData(markdownText) {
+  const lines = markdownText.split(/\r?\n/);
+  const parsed = {
+    courses: [],
+    concepts: [],
+    relations: []
+  };
+
+  let currentCourse = null;
+  let currentConcept = null;
+
+  const addCourseLocal = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    let course = parsed.courses.find((item) => item.name === trimmed);
+    if (!course) {
+      course = { id: `course-${slugify(trimmed)}`, name: trimmed, description: '' };
+      parsed.courses.push(course);
+    }
+    return course;
+  };
+
+  const addConceptLocal = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    let concept = parsed.concepts.find((item) => item.name === trimmed);
+    if (!concept) {
+      concept = {
+        id: `concept-${slugify(trimmed)}-${parsed.concepts.length + 1}`,
+        name: trimmed,
+        courseIds: currentCourse ? [currentCourse.id] : [],
+        description: ''
+      };
+      parsed.concepts.push(concept);
+    } else if (currentCourse && !concept.courseIds.includes(currentCourse.id)) {
+      concept.courseIds.push(currentCourse.id);
+    }
+    return concept;
+  };
+
+  const addRelationLocal = (sourceName, label, targetName) => {
+    const sourceConcept = addConceptLocal(sourceName);
+    const targetConcept = addConceptLocal(targetName);
+    if (!sourceConcept || !targetConcept || sourceConcept.id === targetConcept.id) return;
+
+    const exists = parsed.relations.some(
+      (relation) => relation.source === sourceConcept.id && relation.target === targetConcept.id && relation.label === label
+    );
+    if (!exists) {
+      parsed.relations.push({
+        id: `rel-${parsed.relations.length + 1}`,
+        source: sourceConcept.id,
+        target: targetConcept.id,
+        label: label || '关联'
+      });
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (/^#\s*课程[:：]/.test(line)) {
+      currentCourse = addCourseLocal(line.replace(/^#\s*课程[:：]/, '').trim());
+      currentConcept = null;
+      continue;
+    }
+
+    if (/^#\s+/.test(line) && !/^#\s*课程[:：]/.test(line)) {
+      currentCourse = addCourseLocal(line.replace(/^#\s+/, '').trim());
+      currentConcept = null;
+      continue;
+    }
+
+    if (/^课程说明[:：]/.test(line) && currentCourse) {
+      currentCourse.description = line.replace(/^课程说明[:：]/, '').trim();
+      continue;
+    }
+
+    if (/^##\s*知识点[:：]/.test(line)) {
+      currentConcept = addConceptLocal(line.replace(/^##\s*知识点[:：]/, '').trim());
+      continue;
+    }
+
+    if (/^##\s+/.test(line) && !/^##\s*知识点[:：]/.test(line)) {
+      currentConcept = addConceptLocal(line.replace(/^##\s+/, '').trim());
+      continue;
+    }
+
+    if (/^说明[:：]/.test(line) && currentConcept) {
+      currentConcept.description = line.replace(/^说明[:：]/, '').trim();
+      continue;
+    }
+
+    if (/^关联[:：]/.test(line) && currentConcept) {
+      const payload = line.replace(/^关联[:：]/, '').trim();
+      const parts = payload.split('|').map((item) => item.trim()).filter(Boolean);
+      const targetName = parts[0];
+      const label = parts[1] || '关联';
+      if (targetName) addRelationLocal(currentConcept.name, label, targetName);
+      continue;
+    }
+
+    if (/^-\s*/.test(line) && currentConcept && !currentConcept.description) {
+      currentConcept.description = line.replace(/^-\s*/, '').trim();
+    }
+  }
+
+  return parsed;
+}
+
+function mergeImportedData(imported) {
+  const courseIdMap = new Map();
+  const conceptIdMap = new Map();
+
+  for (const course of imported.courses) {
+    const ensuredCourse = ensureCourse(course.name, course.description || '');
+    if (ensuredCourse) courseIdMap.set(course.id, ensuredCourse.id);
+  }
+
+  for (const concept of imported.concepts) {
+    const mappedCourseIds = (concept.courseIds || []).map((courseId) => courseIdMap.get(courseId)).filter(Boolean);
+    const ensuredConcept = ensureConcept(concept.name, concept.description || '', mappedCourseIds);
+    if (ensuredConcept) conceptIdMap.set(concept.id, ensuredConcept.id);
+  }
+
+  for (const relation of imported.relations) {
+    const sourceId = conceptIdMap.get(relation.source);
+    const targetId = conceptIdMap.get(relation.target);
+    ensureRelation(sourceId, targetId, relation.label || '关联');
+  }
+}
+
+function importMarkdown(mode = 'replace') {
+  const markdown = els.markdownInput.value.trim();
+  if (!markdown) return alert('先贴一点课程笔记嘛。');
+
+  try {
+    const imported = parseMarkdownToData(markdown);
+    if (!imported.courses.length && !imported.concepts.length) {
+      return alert('我没有在这段 Markdown 里识别到课程或知识点，检查一下格式哦。');
+    }
+
+    if (mode === 'replace') {
+      state.data = { courses: [], concepts: [], relations: [] };
+    }
+
+    mergeImportedData(imported);
+    state.selectedNodeId = null;
+    syncAndRender();
+    alert(`导入完成：${imported.courses.length} 门课程，${imported.concepts.length} 个知识点，${imported.relations.length} 条关系。`);
+  } catch (error) {
+    alert(`Markdown 导入失败：${error.message}`);
+  }
 }
 
 els.courseFilter.addEventListener('change', renderGraph);
 els.showCourseLinks.addEventListener('change', renderGraph);
 els.showConceptLinks.addEventListener('change', renderGraph);
-els.fitGraphBtn.addEventListener('click', () => renderGraph());
+els.fitGraphBtn.addEventListener('click', () => runLayout());
 els.resetBtn.addEventListener('click', resetData);
 els.addCourseBtn.addEventListener('click', addCourse);
 els.addConceptBtn.addEventListener('click', addConcept);
 els.addRelationBtn.addEventListener('click', addRelation);
+els.importMarkdownBtn.addEventListener('click', () => importMarkdown('replace'));
+els.appendMarkdownBtn.addEventListener('click', () => importMarkdown('append'));
 els.applyJsonBtn.addEventListener('click', applyJson);
 els.copyJsonBtn.addEventListener('click', copyJson);
 
