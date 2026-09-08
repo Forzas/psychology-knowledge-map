@@ -21,8 +21,14 @@
 
         <section class="panel">
           <h2>图谱控制</h2>
+          <label class="field-label" for="searchInput">搜索课程 / 知识点</label>
+          <input id="searchInput" type="text" placeholder="比如：依恋、归因、人格" />
+
           <label class="field-label" for="courseFilter">按课程筛选</label>
           <select id="courseFilter"></select>
+
+          <label class="field-label" for="relationFilter">按关系类型筛选</label>
+          <select id="relationFilter"></select>
 
           <label class="checkbox-row">
             <input type="checkbox" id="showCourseLinks" checked />
@@ -96,7 +102,12 @@
             你可以直接编辑 JSON 来批量维护课程、知识点和关系，再点击“更新图谱”。
           </p>
           <textarea id="dataEditor" rows="14"></textarea>
-          <button id="applyJsonBtn">更新图谱</button>
+          <div class="button-row single-mobile">
+            <button id="applyJsonBtn">更新图谱</button>
+            <button id="downloadJsonBtn" class="ghost">导出 JSON</button>
+          </div>
+          <label class="field-label" for="uploadJsonInput">从 JSON 文件导入</label>
+          <input id="uploadJsonInput" type="file" accept="application/json,.json" />
         </section>
       </aside>
 
@@ -110,7 +121,10 @@
             <div class="legend">
               <span><i class="dot course-dot"></i>课程</span>
               <span><i class="dot concept-dot"></i>知识点</span>
-              <span><i class="line relation-line"></i>关联</span>
+              <span><i class="line relation-line"></i>一般关联</span>
+              <span><i class="line relation-line-cause"></i>因果/影响</span>
+              <span><i class="line relation-line-structure"></i>包含/组成</span>
+              <span><i class="line relation-line-contrast"></i>对比/区分</span>
             </div>
           </div>
           <div id="graph"></div>

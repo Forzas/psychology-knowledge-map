@@ -207,10 +207,28 @@ button.small {
   background: var(--concept);
 }
 
-.relation-line {
+.relation-line,
+.relation-line-cause,
+.relation-line-structure,
+.relation-line-contrast {
   width: 16px;
   height: 2px;
+}
+
+.relation-line {
   background: #b19fff;
+}
+
+.relation-line-cause {
+  background: #ff9f7a;
+}
+
+.relation-line-structure {
+  background: #58c4a5;
+}
+
+.relation-line-contrast {
+  background: #5b8def;
 }
 
 #graph {

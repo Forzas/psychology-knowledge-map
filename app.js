@@ -8,6 +8,13 @@ const slugify = (value) =>
     .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
     .replace(/^-+|-+$/g, '') || `item-${Date.now()}`;
 
+const RELATION_STYLES = {
+  cause: { color: '#ff9f7a', label: '因果 / 影响' },
+  structure: { color: '#58c4a5', label: '包含 / 组成' },
+  contrast: { color: '#5b8def', label: '对比 / 区分' },
+  association: { color: '#b19fff', label: '一般关联' }
+};
+
 const state = {
   data: loadData(),
   cy: null,
@@ -15,7 +22,9 @@ const state = {
 };
 
 const els = {
+  searchInput: document.getElementById('searchInput'),
   courseFilter: document.getElementById('courseFilter'),
+  relationFilter: document.getElementById('relationFilter'),
   showCourseLinks: document.getElementById('showCourseLinks'),
   showConceptLinks: document.getElementById('showConceptLinks'),
   fitGraphBtn: document.getElementById('fitGraphBtn'),
@@ -36,6 +45,8 @@ const els = {
   dataEditor: document.getElementById('dataEditor'),
   applyJsonBtn: document.getElementById('applyJsonBtn'),
   copyJsonBtn: document.getElementById('copyJsonBtn'),
+  downloadJsonBtn: document.getElementById('downloadJsonBtn'),
+  uploadJsonInput: document.getElementById('uploadJsonInput'),
   detailsCard: document.getElementById('detailsCard')
 };
 
@@ -61,6 +72,25 @@ function validateData(data) {
   if (!data || !Array.isArray(data.courses) || !Array.isArray(data.concepts) || !Array.isArray(data.relations)) {
     throw new Error('数据结构无效，必须包含 courses / concepts / relations 三个数组。');
   }
+}
+
+function getRelationType(label = '') {
+  const text = label.toLowerCase();
+  if (/(影响|因果|导致|促进|抑制|受影响|预测|决定|驱动|cause|impact|lead)/.test(text)) return 'cause';
+  if (/(包含|组成|属于|层级|子类|上位|下位|part|contain|include)/.test(text)) return 'structure';
+  if (/(对比|区分|区别|比较|相反|冲突|contrast|compare|different)/.test(text)) return 'contrast';
+  return 'association';
+}
+
+function normalizeData(data) {
+  return {
+    courses: data.courses || [],
+    concepts: data.concepts || [],
+    relations: (data.relations || []).map((relation) => ({
+      ...relation,
+      relationType: relation.relationType || getRelationType(relation.label)
+    }))
+  };
 }
 
 function getCourseByName(name) {
@@ -125,25 +155,51 @@ function ensureRelation(sourceId, targetId, label = '关联') {
       id: `rel-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       source: sourceId,
       target: targetId,
-      label
+      label,
+      relationType: getRelationType(label)
     });
   }
 }
 
 function buildElements() {
   const selectedCourseId = els.courseFilter.value || 'all';
+  const selectedRelationType = els.relationFilter.value || 'all';
   const showCourseLinks = els.showCourseLinks.checked;
   const showConceptLinks = els.showConceptLinks.checked;
+  const keyword = (els.searchInput.value || '').trim().toLowerCase();
+
+  const courseMatches = new Set(
+    state.data.courses
+      .filter((course) => !keyword || `${course.name} ${course.description || ''}`.toLowerCase().includes(keyword))
+      .map((course) => course.id)
+  );
+
+  const conceptMatches = new Set(
+    state.data.concepts
+      .filter((concept) => !keyword || `${concept.name} ${concept.description || ''}`.toLowerCase().includes(keyword))
+      .map((concept) => concept.id)
+  );
 
   const allowedConceptIds = new Set(
     state.data.concepts
-      .filter((concept) => selectedCourseId === 'all' || concept.courseIds.includes(selectedCourseId))
+      .filter((concept) => {
+        const matchesCourse = selectedCourseId === 'all' || concept.courseIds.includes(selectedCourseId);
+        const matchesSearch = !keyword || conceptMatches.has(concept.id) || concept.courseIds.some((courseId) => courseMatches.has(courseId));
+        return matchesCourse && matchesSearch;
+      })
       .map((concept) => concept.id)
   );
 
   const allowedCourseIds = new Set(
     state.data.courses
-      .filter((course) => selectedCourseId === 'all' || course.id === selectedCourseId)
+      .filter((course) => {
+        const matchesCourse = selectedCourseId === 'all' || course.id === selectedCourseId;
+        const hasMatchingConcept = state.data.concepts.some(
+          (concept) => concept.courseIds.includes(course.id) && allowedConceptIds.has(concept.id)
+        );
+        const matchesSearch = !keyword || courseMatches.has(course.id) || hasMatchingConcept;
+        return matchesCourse && matchesSearch;
+      })
       .map((course) => course.id)
   );
 
@@ -154,7 +210,8 @@ function buildElements() {
         id: course.id,
         label: course.name,
         type: 'course',
-        description: course.description || ''
+        description: course.description || '',
+        matched: keyword ? courseMatches.has(course.id) : false
       }
     }));
 
@@ -166,7 +223,8 @@ function buildElements() {
         label: concept.name,
         type: 'concept',
         description: concept.description || '',
-        courseIds: concept.courseIds
+        courseIds: concept.courseIds,
+        matched: keyword ? conceptMatches.has(concept.id) : false
       }
     }));
 
@@ -182,7 +240,8 @@ function buildElements() {
                 source: courseId,
                 target: concept.id,
                 label: '包含',
-                edgeType: 'course-link'
+                edgeType: 'course-link',
+                relationType: 'structure'
               }
             }))
         )
@@ -190,10 +249,15 @@ function buildElements() {
 
   const conceptEdges = showConceptLinks
     ? state.data.relations
-        .filter((relation) => allowedConceptIds.has(relation.source) && allowedConceptIds.has(relation.target))
+        .filter((relation) => {
+          const relationType = relation.relationType || getRelationType(relation.label);
+          const matchesType = selectedRelationType === 'all' || relationType === selectedRelationType;
+          return allowedConceptIds.has(relation.source) && allowedConceptIds.has(relation.target) && matchesType;
+        })
         .map((relation) => ({
           data: {
             ...relation,
+            relationType: relation.relationType || getRelationType(relation.label),
             edgeType: 'concept-link'
           }
         }))
@@ -259,19 +323,54 @@ function renderGraph() {
           }
         },
         {
+          selector: 'node[matched = true]',
+          style: {
+            'border-width': 4,
+            'border-color': '#ffcf5a'
+          }
+        },
+        {
           selector: 'edge',
           style: {
             width: 2.4,
             'curve-style': 'bezier',
             'target-arrow-shape': 'triangle',
-            'target-arrow-color': '#baabff',
-            'line-color': '#baabff',
+            'target-arrow-color': 'data(lineColor)',
+            'line-color': 'data(lineColor)',
             label: 'data(label)',
             'font-size': 11,
             color: '#6d5a95',
             'text-background-color': '#ffffff',
             'text-background-opacity': 0.85,
             'text-background-padding': 3
+          }
+        },
+        {
+          selector: 'edge[relationType = "cause"]',
+          style: {
+            'line-color': RELATION_STYLES.cause.color,
+            'target-arrow-color': RELATION_STYLES.cause.color
+          }
+        },
+        {
+          selector: 'edge[relationType = "structure"]',
+          style: {
+            'line-color': RELATION_STYLES.structure.color,
+            'target-arrow-color': RELATION_STYLES.structure.color
+          }
+        },
+        {
+          selector: 'edge[relationType = "contrast"]',
+          style: {
+            'line-color': RELATION_STYLES.contrast.color,
+            'target-arrow-color': RELATION_STYLES.contrast.color
+          }
+        },
+        {
+          selector: 'edge[relationType = "association"]',
+          style: {
+            'line-color': RELATION_STYLES.association.color,
+            'target-arrow-color': RELATION_STYLES.association.color
           }
         },
         {
@@ -340,7 +439,8 @@ function renderDetails(nodeId) {
       .map((relation) => {
         const otherId = relation.source === concept.id ? relation.target : relation.source;
         const otherConcept = state.data.concepts.find((item) => item.id === otherId);
-        return otherConcept ? `${relation.label} · ${otherConcept.name}` : null;
+        const typeLabel = RELATION_STYLES[relation.relationType || getRelationType(relation.label)]?.label || '一般关联';
+        return otherConcept ? `${relation.label}（${typeLabel}） · ${otherConcept.name}` : null;
       })
       .filter(Boolean);
 
@@ -366,6 +466,16 @@ function populateControls() {
   els.courseFilter.innerHTML = courseOptions;
   els.courseFilter.value = state.data.courses.some((course) => course.id === selectedCourse) ? selectedCourse : 'all';
 
+  const relationTypes = Array.from(new Set(state.data.relations.map((relation) => relation.relationType || getRelationType(relation.label))));
+  const relationOptions = ['<option value="all">全部关系类型</option>']
+    .concat(
+      relationTypes.map((type) => `<option value="${type}">${RELATION_STYLES[type]?.label || type}</option>`)
+    )
+    .join('');
+  const selectedRelationType = els.relationFilter.value || 'all';
+  els.relationFilter.innerHTML = relationOptions;
+  els.relationFilter.value = relationTypes.includes(selectedRelationType) ? selectedRelationType : 'all';
+
   const concreteCourseOptions = state.data.courses
     .map((course) => `<option value="${course.id}">${course.name}</option>`)
     .join('');
@@ -381,6 +491,7 @@ function populateControls() {
 }
 
 function syncAndRender() {
+  state.data = normalizeData(state.data);
   populateControls();
   saveData();
   renderGraph();
@@ -424,7 +535,7 @@ function applyJson() {
   try {
     const parsed = JSON.parse(els.dataEditor.value);
     validateData(parsed);
-    state.data = parsed;
+    state.data = normalizeData(parsed);
     state.selectedNodeId = null;
     syncAndRender();
   } catch (error) {
@@ -441,10 +552,43 @@ function copyJson() {
   });
 }
 
+function downloadJson() {
+  const blob = new Blob([JSON.stringify(state.data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'psychology-knowledge-map.json';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJsonFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(String(reader.result || ''));
+      validateData(parsed);
+      state.data = normalizeData(parsed);
+      state.selectedNodeId = null;
+      syncAndRender();
+      alert('JSON 文件导入成功啦。');
+    } catch (error) {
+      alert(`JSON 文件导入失败：${error.message}`);
+    } finally {
+      els.uploadJsonInput.value = '';
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
 function resetData() {
-  state.data = deepClone(window.DEFAULT_DATA);
+  state.data = normalizeData(deepClone(window.DEFAULT_DATA));
   state.selectedNodeId = null;
   els.markdownInput.value = '';
+  els.searchInput.value = '';
   syncAndRender();
 }
 
@@ -501,7 +645,8 @@ function parseMarkdownToData(markdownText) {
         id: `rel-${parsed.relations.length + 1}`,
         source: sourceConcept.id,
         target: targetConcept.id,
-        label: label || '关联'
+        label: label || '关联',
+        relationType: getRelationType(label || '关联')
       });
     }
   };
@@ -604,7 +749,9 @@ function importMarkdown(mode = 'replace') {
   }
 }
 
+els.searchInput.addEventListener('input', renderGraph);
 els.courseFilter.addEventListener('change', renderGraph);
+els.relationFilter.addEventListener('change', renderGraph);
 els.showCourseLinks.addEventListener('change', renderGraph);
 els.showConceptLinks.addEventListener('change', renderGraph);
 els.fitGraphBtn.addEventListener('click', () => runLayout());
@@ -616,5 +763,8 @@ els.importMarkdownBtn.addEventListener('click', () => importMarkdown('replace'))
 els.appendMarkdownBtn.addEventListener('click', () => importMarkdown('append'));
 els.applyJsonBtn.addEventListener('click', applyJson);
 els.copyJsonBtn.addEventListener('click', copyJson);
+els.downloadJsonBtn.addEventListener('click', downloadJson);
+els.uploadJsonInput.addEventListener('change', importJsonFile);
 
+state.data = normalizeData(state.data);
 syncAndRender();
