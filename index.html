@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>心理学知识点拓扑图</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/cytoscape@3.29.2/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">🍧 Psychology Learning OS</p>
+          <h1>心理学知识点拓扑图</h1>
+          <p class="subtitle">
+            把课程、知识点和它们之间的关系，连成一张会呼吸的知识地图。
+          </p>
+        </div>
+
+        <section class="panel">
+          <h2>图谱控制</h2>
+          <label class="field-label" for="courseFilter">按课程筛选</label>
+          <select id="courseFilter"></select>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="showCourseLinks" checked />
+            <span>显示课程 → 知识点关系</span>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="showConceptLinks" checked />
+            <span>显示知识点 → 知识点关系</span>
+          </label>
+
+          <div class="button-row">
+            <button id="fitGraphBtn">重新布局</button>
+            <button id="resetBtn" class="ghost">恢复示例数据</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>快速录入</h2>
+          <label class="field-label" for="courseName">新增课程</label>
+          <input id="courseName" type="text" placeholder="比如：发展心理学导论" />
+          <button id="addCourseBtn">添加课程</button>
+
+          <hr />
+
+          <label class="field-label" for="conceptName">新增知识点</label>
+          <input id="conceptName" type="text" placeholder="比如：依恋类型" />
+          <label class="field-label" for="conceptCourse">属于课程</label>
+          <select id="conceptCourse"></select>
+          <label class="field-label" for="conceptDescription">简短说明</label>
+          <textarea id="conceptDescription" rows="3" placeholder="一句话解释这个知识点"></textarea>
+          <button id="addConceptBtn">添加知识点</button>
+
+          <hr />
+
+          <label class="field-label" for="relationSource">关系起点</label>
+          <select id="relationSource"></select>
+          <label class="field-label" for="relationTarget">关系终点</label>
+          <select id="relationTarget"></select>
+          <label class="field-label" for="relationLabel">关系名称</label>
+          <input id="relationLabel" type="text" placeholder="比如：影响 / 解释 / 对比 / 属于" />
+          <button id="addRelationBtn">添加关系</button>
+        </section>
+
+        <section class="panel">
+          <div class="section-header">
+            <h2>数据 JSON</h2>
+            <button id="copyJsonBtn" class="ghost small">复制</button>
+          </div>
+          <p class="hint">
+            你可以直接编辑 JSON 来批量维护课程、知识点和关系，再点击“更新图谱”。
+          </p>
+          <textarea id="dataEditor" rows="14"></textarea>
+          <button id="applyJsonBtn">更新图谱</button>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <section class="graph-panel">
+          <div class="graph-toolbar">
+            <div>
+              <p class="eyebrow">Knowledge Topology</p>
+              <h2>图谱画布</h2>
+            </div>
+            <div class="legend">
+              <span><i class="dot course-dot"></i>课程</span>
+              <span><i class="dot concept-dot"></i>知识点</span>
+              <span><i class="line relation-line"></i>关联</span>
+            </div>
+          </div>
+          <div id="graph"></div>
+        </section>
+
+        <section class="details-panel panel">
+          <h2>节点详情</h2>
+          <div id="detailsCard" class="empty-state">
+            点击右侧图谱中的课程或知识点，这里会显示说明、关联课程和相邻概念。
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="sample-data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
